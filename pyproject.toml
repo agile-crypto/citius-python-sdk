@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "citius-python-sdk"
+version = "0.1.0.dev0"
+description = "Async Python client SDK for Citius cryptographic services"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = [
+  "citius-api-python @ git+https://github.com/agile-crypto/citius-api-python.git@9297df08d36d3810fc4cdc8bd7a4695b5f856827",
+  "grpcio>=1.84,<2",
+]
+
+[project.optional-dependencies]
+test = [
+  "build>=1,<2",
+  "pytest>=8,<10",
+  "pytest-asyncio>=0.24,<2",
+  "ruff>=0.12,<1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
