@@ -70,14 +70,23 @@ Already implemented:
 
 Missing (this plan's scope):
 
-- `errors.py` — normalized error mapping.
-- `metadata.py` — `OperationMetadata` accessor helpers.
-- Service clients: `crypto`, `key_management`, `crypto_policy` (initial),
-  then `provider`, `key_establishment`, `streaming_crypto` (later).
-- Streaming and stream-unary auth interceptors in `auth.py`.
-- API-version compatibility check against the pinned `citius-api-python`.
-- Package exports in `__init__.py` for the new clients and errors.
-- Contract/integration coverage distinguishing auth failures.
+- Streaming service clients: `provider`, `key_establishment`, `streaming_crypto`.
+- TLS/mTLS handshake coverage and generated-code drift fixtures.
+- Contract/integration coverage against a live server distinguishing auth failures.
+
+Completed since 2026-09-17:
+
+- `errors.py` — `CitiusError` hierarchy, `from_rpc_error`, and `map_rpc_errors`.
+- `metadata.py` — lossless `OperationMetadata` wrapper with `to_dict()`.
+- `version.py` — recorded API pin and `check_api_compatibility()`.
+- `auth.py` — unary and streaming bearer interceptors plus `CallableTokenProvider`.
+- `services/crypto.py` — `Encrypt`, `Decrypt`, `Sign`, `Verify`, `DigestSign`,
+  `DigestVerify` with metadata-preserving responses.
+- `services/key_management.py` — `CreateKey`, `ReadKey`, `TransformKey`.
+- `services/crypto_policy.py` — `CreateCryptoPolicy`, `ReadCryptoPolicy`,
+  `UpdateCryptoPolicy`.
+- `tests/` — `test_errors.py`, `test_version.py`, `test_crypto.py`,
+  `test_key_management.py`, `test_crypto_policy.py`.
 
 ## 4. Generated API surface (from `citius_api`)
 
