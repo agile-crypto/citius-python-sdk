@@ -10,19 +10,12 @@ import grpc
 
 
 class CitiusError(Exception):
-    """Base error carrying the gRPC status code, message, and safe details."""
+    """Base error carrying the gRPC status code and safe message."""
 
-    def __init__(
-        self,
-        code: grpc.StatusCode,
-        message: str,
-        *,
-        details: tuple[str, ...] = (),
-    ) -> None:
+    def __init__(self, code: grpc.StatusCode, message: str) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
-        self.details = details
 
     def __str__(self) -> str:
         return f"{self.code.name.lower()}: {self.message}"
@@ -81,7 +74,7 @@ def from_rpc_error(error: grpc.aio.AioRpcError) -> CitiusError:
     """Map a gRPC failure to the matching Citius error subclass."""
     code = error.code()
     error_type = _CODE_TO_ERROR.get(code, CitiusError)
-    return error_type(code, error.details() or code.name, details=())
+    return error_type(code, error.details() or code.name)
 
 
 P = ParamSpec("P")
