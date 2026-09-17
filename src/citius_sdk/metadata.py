@@ -33,9 +33,10 @@ class OperationMetadata:
         return dict(self._inner.user_context)
 
     def to_dict(self) -> dict[str, object]:
-        """Render the metadata preserving proto field and enum names."""
+        """Render the metadata preserving proto field names and default values."""
         return MessageToDict(
             self._inner,
+            always_print_fields_with_no_presence=True,
             preserving_proto_field_name=True,
             use_integers_for_enums=False,
         )
