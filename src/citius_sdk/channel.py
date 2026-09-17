@@ -20,6 +20,15 @@ def _read(path: Path | str | None) -> bytes | None:
     return Path(path).read_bytes() if path is not None else None
 
 
+def _read_ca(path: Path | str | None) -> bytes | None:
+    if path is None:
+        return None
+    pem = Path(path).read_bytes()
+    if b"BEGIN CERTIFICATE" not in pem:
+        raise ValueError(f"no PEM certificate found in CA file {path}")
+    return pem
+
+
 def create_channel(
     config: ClientConfig, token_provider: TokenProvider | None = None
 ) -> grpc.aio.Channel:
@@ -42,7 +51,7 @@ def create_channel(
         )
 
     credentials = grpc.ssl_channel_credentials(
-        root_certificates=_read(config.tls.ca_cert),
+        root_certificates=_read_ca(config.tls.ca_cert),
         private_key=_read(config.tls.client_key),
         certificate_chain=_read(config.tls.client_cert),
     )

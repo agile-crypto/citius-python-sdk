@@ -8,20 +8,31 @@ from pathlib import Path
 
 @dataclass(frozen=True, slots=True)
 class TLSConfig:
-    """TLS and optional mutual-TLS file configuration."""
+    """TLS and optional mutual-TLS file configuration.
+
+    server_name_override overrides the certificate hostname checked during the
+    handshake instead of verifying the certificate against the dial endpoint. It
+    weakens hostname verification and is intended only for local development and
+    testing against certificates issued for a different name.
+    """
 
     enabled: bool = True
     ca_cert: Path | str | None = None
     client_cert: Path | str | None = None
     client_key: Path | str | None = None
-    server_name: str | None = None
+    server_name_override: str | None = None
 
     def __post_init__(self) -> None:
         if (self.client_cert is None) != (self.client_key is None):
             raise ValueError("client_cert and client_key must be configured together")
         if not self.enabled and any(
             value is not None
-            for value in (self.ca_cert, self.client_cert, self.client_key, self.server_name)
+            for value in (
+                self.ca_cert,
+                self.client_cert,
+                self.client_key,
+                self.server_name_override,
+            )
         ):
             raise ValueError("TLS options cannot be set when TLS is disabled")
 
@@ -50,6 +61,6 @@ class ClientConfig:
             ("grpc.max_send_message_length", self.max_send_message_length),
             ("grpc.max_receive_message_length", self.max_receive_message_length),
         ]
-        if self.tls.server_name:
-            options.append(("grpc.ssl_target_name_override", self.tls.server_name))
+        if self.tls.server_name_override:
+            options.append(("grpc.ssl_target_name_override", self.tls.server_name_override))
         return tuple(options)
