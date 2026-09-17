@@ -6,7 +6,13 @@ from pathlib import Path
 
 import grpc
 
-from citius_sdk.auth import BearerAuthInterceptor, TokenProvider
+from citius_sdk.auth import (
+    BearerAuthInterceptor,
+    StreamStreamBearerInterceptor,
+    StreamUnaryBearerInterceptor,
+    TokenProvider,
+    UnaryStreamBearerInterceptor,
+)
 from citius_sdk.config import ClientConfig
 
 
@@ -17,9 +23,16 @@ def _read(path: Path | str | None) -> bytes | None:
 def create_channel(
     config: ClientConfig, token_provider: TokenProvider | None = None
 ) -> grpc.aio.Channel:
-    """Create an async channel, fetching authentication per unary RPC."""
+    """Create an async channel, fetching authentication per RPC."""
     interceptors = (
-        (BearerAuthInterceptor(token_provider),) if token_provider is not None else ()
+        (
+            BearerAuthInterceptor(token_provider),
+            UnaryStreamBearerInterceptor(token_provider),
+            StreamUnaryBearerInterceptor(token_provider),
+            StreamStreamBearerInterceptor(token_provider),
+        )
+        if token_provider is not None
+        else ()
     )
     if not config.tls.enabled:
         return grpc.aio.insecure_channel(
