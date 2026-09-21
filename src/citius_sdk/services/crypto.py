@@ -27,6 +27,13 @@ from citius_sdk.channel import create_channel
 from citius_sdk.config import ClientConfig
 from citius_sdk.errors import InvalidArgumentError, map_rpc_errors
 from citius_sdk.metadata import OperationMetadata, metadata_from_proto
+from citius_sdk.params import (
+    EncryptionParams,
+    HashAlgorithm,
+    SignatureContext,
+    encryption_params_arm,
+    signature_context_arm,
+)
 
 
 def _require(errors: list[str], condition: bool, message: str) -> None:
@@ -42,60 +49,192 @@ def _raise_if_invalid(request_type: str, errors: list[str]) -> None:
         )
 
 
-def encrypt_request(key_name: str, plaintext: bytes) -> EncryptRequest:
-    """Build an EncryptRequest with no scope-specific parameters."""
+def _set_encryption_params(
+    request: EncryptRequest | DecryptRequest, params: EncryptionParams
+) -> None:
+    arm, proto = encryption_params_arm(params)
+    getattr(request, arm).CopyFrom(proto)
+
+
+def encrypt_request(
+    key_name: str,
+    plaintext: bytes,
+    *,
+    params: EncryptionParams | None = None,
+    user_context: dict[str, str] | None = None,
+) -> EncryptRequest:
+    """Build an EncryptRequest, optionally with operation ``params``.
+
+    ``params`` selects a parameter kind (e.g. :class:`AeadParams` to attach
+    additional authenticated data). When omitted, the request uses the default
+    (server-selected) parameters for the key's scope. ``user_context`` is an
+    opaque string map echoed back in the operation metadata.
+    """
     errors: list[str] = []
     _require(errors, bool(key_name), "key name is empty")
     _require(errors, bool(plaintext), "plaintext is empty")
     _raise_if_invalid("encrypt request", errors)
-    return EncryptRequest(key_name=key_name, plaintext=plaintext)
+    request = EncryptRequest(key_name=key_name, plaintext=plaintext)
+    if params is not None:
+        try:
+            _set_encryption_params(request, params)
+        except ValueError as exc:
+            raise InvalidArgumentError(
+                grpc.StatusCode.INVALID_ARGUMENT, f"invalid encrypt request: {exc}"
+            ) from exc
+    if user_context:
+        request.user_context.update(user_context)
+    return request
 
 
 def decrypt_request(
-    key_name: str, ciphertext: bytes, metadata: OperationMetadataProto
+    key_name: str,
+    ciphertext: bytes,
+    metadata: OperationMetadataProto,
+    *,
+    params: EncryptionParams | None = None,
+    user_context: dict[str, str] | None = None,
 ) -> DecryptRequest:
-    """Build a DecryptRequest carrying the ciphertext operation metadata."""
+    """Build a DecryptRequest carrying the ciphertext operation metadata.
+
+    ``params`` must match the parameters used at encrypt time (e.g. the same
+    :class:`AeadParams` AAD) or verification/decryption fails.
+    """
     errors: list[str] = []
     _require(errors, bool(key_name), "key name is empty")
     _require(errors, bool(ciphertext), "ciphertext is empty")
     _require(errors, metadata is not None, "metadata is required")
     _raise_if_invalid("decrypt request", errors)
-    return DecryptRequest(key_name=key_name, ciphertext=ciphertext, metadata=metadata)
+    request = DecryptRequest(key_name=key_name, ciphertext=ciphertext, metadata=metadata)
+    if params is not None:
+        try:
+            _set_encryption_params(request, params)
+        except ValueError as exc:
+            raise InvalidArgumentError(
+                grpc.StatusCode.INVALID_ARGUMENT, f"invalid decrypt request: {exc}"
+            ) from exc
+    if user_context:
+        request.user_context.update(user_context)
+    return request
 
 
-def sign_request(key_name: str, message: bytes) -> SignRequest:
-    """Build a SignRequest with no signature context."""
+def _set_signature_context(
+    request: SignRequest | VerifyRequest | DigestSignRequest | DigestVerifyRequest,
+    context: SignatureContext,
+) -> None:
+    arm, proto = signature_context_arm(context)
+    getattr(request, arm).CopyFrom(proto)
+
+
+def sign_request(
+    key_name: str,
+    message: bytes,
+    *,
+    context: SignatureContext | None = None,
+    user_context: dict[str, str] | None = None,
+) -> SignRequest:
+    """Build a SignRequest, optionally with a signature ``context``.
+
+    ``context`` selects a domain-separation or vendor context (e.g.
+    :class:`DomainContext` for Ed25519ctx). When omitted the signature uses no
+    context. ``user_context`` is an opaque string map echoed in the metadata.
+    """
     errors: list[str] = []
     _require(errors, bool(key_name), "key name is empty")
     _require(errors, bool(message), "input is empty")
     _raise_if_invalid("sign request", errors)
-    return SignRequest(key_name=key_name, input=message)
+    request = SignRequest(key_name=key_name, input=message)
+    if context is not None:
+        try:
+            _set_signature_context(request, context)
+        except ValueError as exc:
+            raise InvalidArgumentError(
+                grpc.StatusCode.INVALID_ARGUMENT, f"invalid sign request: {exc}"
+            ) from exc
+    if user_context:
+        request.user_context.update(user_context)
+    return request
 
 
 def verify_request(
-    key_name: str, message: bytes, signature: bytes, metadata: OperationMetadataProto
+    key_name: str,
+    message: bytes,
+    signature: bytes,
+    metadata: OperationMetadataProto,
+    *,
+    context: SignatureContext | None = None,
+    user_context: dict[str, str] | None = None,
 ) -> VerifyRequest:
-    """Build a VerifyRequest carrying the signature operation metadata."""
+    """Build a VerifyRequest carrying the signature operation metadata.
+
+    ``context`` must match the context used at sign time or verification fails.
+    """
     errors: list[str] = []
     _require(errors, bool(key_name), "key name is empty")
     _require(errors, bool(message), "input is empty")
     _require(errors, bool(signature), "signature is empty")
     _require(errors, metadata is not None, "metadata is required")
     _raise_if_invalid("verify request", errors)
-    return VerifyRequest(key_name=key_name, input=message, signature=signature, metadata=metadata)
+    request = VerifyRequest(
+        key_name=key_name, input=message, signature=signature, metadata=metadata
+    )
+    if context is not None:
+        try:
+            _set_signature_context(request, context)
+        except ValueError as exc:
+            raise InvalidArgumentError(
+                grpc.StatusCode.INVALID_ARGUMENT, f"invalid verify request: {exc}"
+            ) from exc
+    if user_context:
+        request.user_context.update(user_context)
+    return request
 
 
-def digest_sign_request(key_name: str, digest: bytes) -> DigestSignRequest:
-    """Build a DigestSignRequest with no signature context."""
+def digest_sign_request(
+    key_name: str,
+    digest: bytes,
+    *,
+    context: SignatureContext | None = None,
+    hash_algorithm: HashAlgorithm | None = None,
+    hash_algorithm_oid: str = "",
+    user_context: dict[str, str] | None = None,
+) -> DigestSignRequest:
+    """Build a DigestSignRequest for a pre-computed ``digest``.
+
+    ``hash_algorithm`` (or ``hash_algorithm_oid``) declares which hash produced
+    the digest so the provider can build the correct signature encoding.
+    """
     errors: list[str] = []
     _require(errors, bool(key_name), "key name is empty")
     _require(errors, bool(digest), "digest is empty")
     _raise_if_invalid("digest sign request", errors)
-    return DigestSignRequest(key_name=key_name, digest=digest)
+    request = DigestSignRequest(key_name=key_name, digest=digest)
+    if context is not None:
+        try:
+            _set_signature_context(request, context)
+        except ValueError as exc:
+            raise InvalidArgumentError(
+                grpc.StatusCode.INVALID_ARGUMENT, f"invalid digest sign request: {exc}"
+            ) from exc
+    if hash_algorithm is not None:
+        request.hash_algorithm = int(hash_algorithm)
+    if hash_algorithm_oid:
+        request.hash_algorithm_oid = hash_algorithm_oid
+    if user_context:
+        request.user_context.update(user_context)
+    return request
 
 
 def digest_verify_request(
-    key_name: str, digest: bytes, signature: bytes, metadata: OperationMetadataProto
+    key_name: str,
+    digest: bytes,
+    signature: bytes,
+    metadata: OperationMetadataProto,
+    *,
+    context: SignatureContext | None = None,
+    hash_algorithm: HashAlgorithm | None = None,
+    hash_algorithm_oid: str = "",
+    user_context: dict[str, str] | None = None,
 ) -> DigestVerifyRequest:
     """Build a DigestVerifyRequest carrying the signature operation metadata."""
     errors: list[str] = []
@@ -104,9 +243,23 @@ def digest_verify_request(
     _require(errors, bool(signature), "signature is empty")
     _require(errors, metadata is not None, "metadata is required")
     _raise_if_invalid("digest verify request", errors)
-    return DigestVerifyRequest(
+    request = DigestVerifyRequest(
         key_name=key_name, digest=digest, signature=signature, metadata=metadata
     )
+    if context is not None:
+        try:
+            _set_signature_context(request, context)
+        except ValueError as exc:
+            raise InvalidArgumentError(
+                grpc.StatusCode.INVALID_ARGUMENT, f"invalid digest verify request: {exc}"
+            ) from exc
+    if hash_algorithm is not None:
+        request.hash_algorithm = int(hash_algorithm)
+    if hash_algorithm_oid:
+        request.hash_algorithm_oid = hash_algorithm_oid
+    if user_context:
+        request.user_context.update(user_context)
+    return request
 
 
 class EncryptResult:

@@ -20,6 +20,18 @@ from citius_sdk.errors import (
     from_rpc_error,
 )
 from citius_sdk.metadata import OperationMetadata
+from citius_sdk.params import (
+    AeadParams,
+    AsymmetricEncryptParams,
+    DomainContext,
+    EncryptionParams,
+    HashAlgorithm,
+    SignatureContext,
+    VendorEncryptionParams,
+    VendorParams,
+    VendorSignatureContext,
+    XtsParams,
+)
 from citius_sdk.version import (
     check_api_compatibility,
     compatible_api_version,
@@ -42,15 +54,20 @@ from citius_sdk.vocabulary import (
 )
 
 __all__ = [
+    "AeadParams",
     "AeadProperties",
     "AlreadyExistsError",
+    "AsymmetricEncryptParams",
     "AuthenticationError",
     "CallableTokenProvider",
     "CitiusError",
     "ClientConfig",
     "DeadlineExceededError",
+    "DomainContext",
+    "EncryptionParams",
     "FailedPreconditionError",
     "Fips140Level",
+    "HashAlgorithm",
     "InvalidArgumentError",
     "KdfProperties",
     "KeyAgreementProperties",
@@ -64,12 +81,17 @@ __all__ = [
     "ProviderRequirements",
     "Scope",
     "SecurityProperties",
+    "SignatureContext",
     "SignatureProperties",
     "StaticTokenProvider",
     "TLSConfig",
     "TokenProvider",
     "UnavailableError",
     "UnimplementedError",
+    "VendorEncryptionParams",
+    "VendorParams",
+    "VendorSignatureContext",
+    "XtsParams",
     "build_scope_spec",
     "check_api_compatibility",
     "compatible_api_version",
