@@ -99,7 +99,7 @@ async def test_create_read_transform_key(key_endpoint) -> None:
 async def test_missing_token_raises_authentication_error(key_endpoint) -> None:
     async with KeyManagementClient.connect(_config(key_endpoint)) as client:
         with pytest.raises(AuthenticationError):
-            await client.create_key(create_key_request("demo-key"))
+            await client.create_key(create_key_request("demo-key", template_id="tmpl-1"))
 
 
 @pytest.mark.asyncio
@@ -108,10 +108,10 @@ async def test_denied_key_raises_permission_denied(key_endpoint) -> None:
         _config(key_endpoint), token_provider=StaticTokenProvider("t")
     ) as client:
         with pytest.raises(PermissionDeniedError):
-            await client.create_key(create_key_request(_DENIED))
+            await client.create_key(create_key_request(_DENIED, template_id="tmpl-1"))
 
 
 def test_create_key_request_requires_name() -> None:
     with pytest.raises(InvalidArgumentError) as raised:
-        create_key_request("")
+        create_key_request("", template_id="tmpl-1")
     assert "name is empty" in str(raised.value)

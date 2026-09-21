@@ -18,6 +18,13 @@ from citius_sdk.auth import TokenProvider
 from citius_sdk.channel import create_channel
 from citius_sdk.config import ClientConfig
 from citius_sdk.errors import InvalidArgumentError, map_rpc_errors
+from citius_sdk.vocabulary import (
+    PrimitiveProperties,
+    ProviderRequirements,
+    Scope,
+    SecurityProperties,
+    build_scope_spec,
+)
 
 
 def _require(errors: list[str], condition: bool, message: str) -> None:
@@ -37,16 +44,60 @@ def create_key_request(
     name: str,
     *,
     policy: str = "",
+    scope: Scope | None = None,
     template_id: str = "",
     provider_id: str = "",
+    security_properties: SecurityProperties | None = None,
+    primitive_properties: PrimitiveProperties | None = None,
+    additional_properties: dict[str, str] | None = None,
+    provider_requirements: ProviderRequirements | None = None,
+    provider_configuration: dict[str, str] | None = None,
 ) -> CreateKeyRequest:
-    """Build a CreateKeyRequest identified by name and an optional template."""
+    """Build a CreateKeyRequest from an intent-oriented request vocabulary.
+
+    ``scope`` selects the operational intent (e.g. ``Scope.AEAD_STANDARD``);
+    ``security_properties``, ``primitive_properties`` and ``additional_properties``
+    layer template filters onto that scope; ``provider_requirements`` and
+    ``provider_configuration`` constrain the hosting provider. ``template_id``
+    and ``provider_id`` pin an explicit template/provider instead of letting the
+    server select one. A scope is required unless a ``template_id`` is given,
+    since the server needs a scope specification to select a template.
+    """
     errors: list[str] = []
     _require(errors, bool(name), "name is empty")
+    _require(
+        errors,
+        scope is not None or bool(template_id),
+        "a scope or template_id is required",
+    )
+    if scope is None and (
+        security_properties is not None or primitive_properties is not None or additional_properties
+    ):
+        errors.append("scope filter properties require a scope")
     _raise_if_invalid("create key request", errors)
-    return CreateKeyRequest(
+
+    request = CreateKeyRequest(
         name=name, policy=policy, template_id=template_id, provider_id=provider_id
     )
+    if scope is not None:
+        try:
+            request.scope_spec.CopyFrom(
+                build_scope_spec(
+                    scope,
+                    security=security_properties,
+                    primitive=primitive_properties,
+                    additional=additional_properties,
+                )
+            )
+        except ValueError as exc:
+            raise InvalidArgumentError(
+                grpc.StatusCode.INVALID_ARGUMENT, f"invalid create key request: {exc}"
+            ) from exc
+    if provider_requirements is not None:
+        request.provider_requirements.CopyFrom(provider_requirements.to_proto())
+    if provider_configuration:
+        request.provider_configuration.update(provider_configuration)
+    return request
 
 
 def read_key_request(name: str, *, version: int | None = None) -> ReadKeyRequest:
