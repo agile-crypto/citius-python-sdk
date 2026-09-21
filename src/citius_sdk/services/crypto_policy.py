@@ -82,6 +82,11 @@ class CreatePolicyResult:
         self._inner = inner
 
     @property
+    def proto(self) -> CreateCryptoPolicyResponse:
+        """The full underlying response message."""
+        return self._inner
+
+    @property
     def success(self) -> bool:
         return self._inner.success
 
@@ -99,6 +104,11 @@ class ReadPolicyResult:
 
     def __init__(self, inner: ReadCryptoPolicyResponse) -> None:
         self._inner = inner
+
+    @property
+    def proto(self) -> ReadCryptoPolicyResponse:
+        """The full underlying response message."""
+        return self._inner
 
     @property
     def name(self) -> str:
@@ -122,6 +132,11 @@ class UpdatePolicyResult:
 
     def __init__(self, inner: UpdateCryptoPolicyResponse) -> None:
         self._inner = inner
+
+    @property
+    def proto(self) -> UpdateCryptoPolicyResponse:
+        """The full underlying response message."""
+        return self._inner
 
     @property
     def success(self) -> bool:

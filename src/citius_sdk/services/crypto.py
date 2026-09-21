@@ -269,6 +269,11 @@ class EncryptResult:
         self._inner = inner
 
     @property
+    def proto(self) -> EncryptResponse:
+        """The full underlying response message."""
+        return self._inner
+
+    @property
     def ciphertext(self) -> bytes:
         return self._inner.ciphertext
 
@@ -284,6 +289,11 @@ class DecryptResult:
 
     def __init__(self, inner: DecryptResponse) -> None:
         self._inner = inner
+
+    @property
+    def proto(self) -> DecryptResponse:
+        """The full underlying response message."""
+        return self._inner
 
     @property
     def plaintext(self) -> bytes:
@@ -303,6 +313,11 @@ class SignResult:
         self._inner = inner
 
     @property
+    def proto(self) -> SignResponse | DigestSignResponse:
+        """The full underlying response message."""
+        return self._inner
+
+    @property
     def signature(self) -> bytes:
         return self._inner.signature
 
@@ -318,6 +333,11 @@ class VerifyResult:
 
     def __init__(self, inner: VerifyResponse | DigestVerifyResponse) -> None:
         self._inner = inner
+
+    @property
+    def proto(self) -> VerifyResponse | DigestVerifyResponse:
+        """The full underlying response message."""
+        return self._inner
 
     @property
     def valid(self) -> bool:

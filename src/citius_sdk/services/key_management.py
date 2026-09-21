@@ -164,6 +164,11 @@ class CreateKeyResult:
         self._inner = inner
 
     @property
+    def proto(self) -> CreateKeyResponse:
+        """The full underlying response message."""
+        return self._inner
+
+    @property
     def success(self) -> bool:
         return self._inner.success
 
@@ -187,6 +192,11 @@ class ReadKeyResult:
         self._inner = inner
 
     @property
+    def proto(self) -> ReadKeyResponse:
+        """The full underlying response message."""
+        return self._inner
+
+    @property
     def key_metadata(self) -> KeyMetadataView | None:
         return (
             KeyMetadataView(self._inner.key_metadata)
@@ -200,6 +210,11 @@ class TransformKeyResult:
 
     def __init__(self, inner: TransformKeyResponse) -> None:
         self._inner = inner
+
+    @property
+    def proto(self) -> TransformKeyResponse:
+        """The full underlying response message."""
+        return self._inner
 
     @property
     def success(self) -> bool:
