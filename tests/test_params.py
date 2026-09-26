@@ -103,9 +103,21 @@ def test_sign_request_sets_domain_context() -> None:
     assert request.domain_context.context == b"dom"
 
 
-def test_sign_request_default_has_no_context() -> None:
+def test_sign_request_default_selects_no_context() -> None:
     request = sign_request("k", b"msg")
-    assert request.WhichOneof("scope_params") is None
+    assert request.WhichOneof("scope_params") == "no_context"
+
+
+def test_verify_request_default_selects_no_context() -> None:
+    request = verify_request("k", b"msg", b"sig", _metadata())
+    assert request.WhichOneof("scope_params") == "no_context"
+
+
+def test_digest_requests_default_select_no_context() -> None:
+    signed = digest_sign_request("k", b"digest")
+    verified = digest_verify_request("k", b"digest", b"sig", _metadata())
+    assert signed.WhichOneof("scope_params") == "no_context"
+    assert verified.WhichOneof("scope_params") == "no_context"
 
 
 def test_verify_request_sets_vendor_context_and_user_context() -> None:

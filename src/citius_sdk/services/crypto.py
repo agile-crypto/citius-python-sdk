@@ -120,8 +120,12 @@ def decrypt_request(
 
 def _set_signature_context(
     request: SignRequest | VerifyRequest | DigestSignRequest | DigestVerifyRequest,
-    context: SignatureContext,
+    context: SignatureContext | None,
 ) -> None:
+    # The server requires a scope_params arm; no context selects ``no_context``.
+    if context is None:
+        request.no_context.SetInParent()
+        return
     arm, proto = signature_context_arm(context)
     getattr(request, arm).CopyFrom(proto)
 
@@ -136,21 +140,21 @@ def sign_request(
     """Build a SignRequest, optionally with a signature ``context``.
 
     ``context`` selects a domain-separation or vendor context (e.g.
-    :class:`DomainContext` for Ed25519ctx). When omitted the signature uses no
-    context. ``user_context`` is an opaque string map echoed in the metadata.
+    :class:`DomainContext` for Ed25519ctx). When omitted the request selects
+    ``no_context`` (standard signature scope). ``user_context`` is an opaque
+    string map echoed in the metadata.
     """
     errors: list[str] = []
     _require(errors, bool(key_name), "key name is empty")
     _require(errors, bool(message), "input is empty")
     _raise_if_invalid("sign request", errors)
     request = SignRequest(key_name=key_name, input=message)
-    if context is not None:
-        try:
-            _set_signature_context(request, context)
-        except ValueError as exc:
-            raise InvalidArgumentError(
-                grpc.StatusCode.INVALID_ARGUMENT, f"invalid sign request: {exc}"
-            ) from exc
+    try:
+        _set_signature_context(request, context)
+    except ValueError as exc:
+        raise InvalidArgumentError(
+            grpc.StatusCode.INVALID_ARGUMENT, f"invalid sign request: {exc}"
+        ) from exc
     if user_context:
         request.user_context.update(user_context)
     return request
@@ -168,6 +172,7 @@ def verify_request(
     """Build a VerifyRequest carrying the signature operation metadata.
 
     ``context`` must match the context used at sign time or verification fails.
+    When omitted the request selects ``no_context``.
     """
     errors: list[str] = []
     _require(errors, bool(key_name), "key name is empty")
@@ -178,13 +183,12 @@ def verify_request(
     request = VerifyRequest(
         key_name=key_name, input=message, signature=signature, metadata=metadata
     )
-    if context is not None:
-        try:
-            _set_signature_context(request, context)
-        except ValueError as exc:
-            raise InvalidArgumentError(
-                grpc.StatusCode.INVALID_ARGUMENT, f"invalid verify request: {exc}"
-            ) from exc
+    try:
+        _set_signature_context(request, context)
+    except ValueError as exc:
+        raise InvalidArgumentError(
+            grpc.StatusCode.INVALID_ARGUMENT, f"invalid verify request: {exc}"
+        ) from exc
     if user_context:
         request.user_context.update(user_context)
     return request
@@ -202,20 +206,21 @@ def digest_sign_request(
     """Build a DigestSignRequest for a pre-computed ``digest``.
 
     ``hash_algorithm`` (or ``hash_algorithm_oid``) declares which hash produced
-    the digest so the provider can build the correct signature encoding.
+    the digest so the provider can build the correct signature encoding. When
+    ``context`` is omitted the request selects ``no_context``, which requires a
+    key with a prehashed signature scope.
     """
     errors: list[str] = []
     _require(errors, bool(key_name), "key name is empty")
     _require(errors, bool(digest), "digest is empty")
     _raise_if_invalid("digest sign request", errors)
     request = DigestSignRequest(key_name=key_name, digest=digest)
-    if context is not None:
-        try:
-            _set_signature_context(request, context)
-        except ValueError as exc:
-            raise InvalidArgumentError(
-                grpc.StatusCode.INVALID_ARGUMENT, f"invalid digest sign request: {exc}"
-            ) from exc
+    try:
+        _set_signature_context(request, context)
+    except ValueError as exc:
+        raise InvalidArgumentError(
+            grpc.StatusCode.INVALID_ARGUMENT, f"invalid digest sign request: {exc}"
+        ) from exc
     if hash_algorithm is not None:
         request.hash_algorithm = int(hash_algorithm)
     if hash_algorithm_oid:
@@ -236,7 +241,10 @@ def digest_verify_request(
     hash_algorithm_oid: str = "",
     user_context: dict[str, str] | None = None,
 ) -> DigestVerifyRequest:
-    """Build a DigestVerifyRequest carrying the signature operation metadata."""
+    """Build a DigestVerifyRequest carrying the signature operation metadata.
+
+    When ``context`` is omitted the request selects ``no_context``.
+    """
     errors: list[str] = []
     _require(errors, bool(key_name), "key name is empty")
     _require(errors, bool(digest), "digest is empty")
@@ -246,13 +254,12 @@ def digest_verify_request(
     request = DigestVerifyRequest(
         key_name=key_name, digest=digest, signature=signature, metadata=metadata
     )
-    if context is not None:
-        try:
-            _set_signature_context(request, context)
-        except ValueError as exc:
-            raise InvalidArgumentError(
-                grpc.StatusCode.INVALID_ARGUMENT, f"invalid digest verify request: {exc}"
-            ) from exc
+    try:
+        _set_signature_context(request, context)
+    except ValueError as exc:
+        raise InvalidArgumentError(
+            grpc.StatusCode.INVALID_ARGUMENT, f"invalid digest verify request: {exc}"
+        ) from exc
     if hash_algorithm is not None:
         request.hash_algorithm = int(hash_algorithm)
     if hash_algorithm_oid:
