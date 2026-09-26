@@ -200,13 +200,13 @@ def digest_sign_request(
     *,
     context: SignatureContext | None = None,
     hash_algorithm: HashAlgorithm | None = None,
-    hash_algorithm_oid: str = "",
     user_context: dict[str, str] | None = None,
 ) -> DigestSignRequest:
     """Build a DigestSignRequest for a pre-computed ``digest``.
 
-    ``hash_algorithm`` (or ``hash_algorithm_oid``) declares which hash produced
-    the digest so the provider can build the correct signature encoding. When
+    ``hash_algorithm`` declares which hash produced the digest; it must be one
+    of the key version's accepted digest hashes. The server records it in the
+    response metadata (``digest_hash``) for the matching DigestVerify. When
     ``context`` is omitted the request selects ``no_context``, which requires a
     key with a prehashed signature scope.
     """
@@ -223,8 +223,6 @@ def digest_sign_request(
         ) from exc
     if hash_algorithm is not None:
         request.hash_algorithm = int(hash_algorithm)
-    if hash_algorithm_oid:
-        request.hash_algorithm_oid = hash_algorithm_oid
     if user_context:
         request.user_context.update(user_context)
     return request
@@ -237,13 +235,13 @@ def digest_verify_request(
     metadata: OperationMetadataProto,
     *,
     context: SignatureContext | None = None,
-    hash_algorithm: HashAlgorithm | None = None,
-    hash_algorithm_oid: str = "",
     user_context: dict[str, str] | None = None,
 ) -> DigestVerifyRequest:
     """Build a DigestVerifyRequest carrying the signature operation metadata.
 
-    When ``context`` is omitted the request selects ``no_context``.
+    Pass DigestSign's metadata unchanged: it carries the key version, the
+    provider output and the digest hash the server checks. When ``context`` is
+    omitted the request selects ``no_context``.
     """
     errors: list[str] = []
     _require(errors, bool(key_name), "key name is empty")
@@ -260,10 +258,6 @@ def digest_verify_request(
         raise InvalidArgumentError(
             grpc.StatusCode.INVALID_ARGUMENT, f"invalid digest verify request: {exc}"
         ) from exc
-    if hash_algorithm is not None:
-        request.hash_algorithm = int(hash_algorithm)
-    if hash_algorithm_oid:
-        request.hash_algorithm_oid = hash_algorithm_oid
     if user_context:
         request.user_context.update(user_context)
     return request

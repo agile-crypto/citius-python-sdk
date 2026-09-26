@@ -142,22 +142,33 @@ def test_digest_sign_request_sets_hash_algorithm() -> None:
     assert request.hash_algorithm == int(HashAlgorithm.SHA256)
 
 
-def test_digest_sign_request_sets_hash_oid() -> None:
-    request = digest_sign_request("k", b"digest", hash_algorithm_oid="2.16.840.1.101.3.4.2.1")
-    assert request.hash_algorithm_oid == "2.16.840.1.101.3.4.2.1"
+def test_digest_sign_request_takes_no_hash_oid() -> None:
+    with pytest.raises(TypeError):
+        digest_sign_request("k", b"digest", hash_algorithm_oid="2.16.840.1.101.3.4.2.1")  # type: ignore[call-arg]
 
 
-def test_digest_verify_request_sets_hash_algorithm_and_context() -> None:
+def test_digest_verify_request_passes_metadata_and_context() -> None:
+    metadata = _metadata()
     request = digest_verify_request(
         "k",
         b"digest",
         b"sig",
-        _metadata(),
+        metadata,
         context=DomainContext(context=b"dom"),
-        hash_algorithm=HashAlgorithm.SHA384,
     )
-    assert request.hash_algorithm == int(HashAlgorithm.SHA384)
+    assert request.metadata == metadata
     assert request.WhichOneof("scope_params") == "domain_context"
+
+
+def test_digest_verify_request_takes_no_hash_algorithm() -> None:
+    with pytest.raises(TypeError):
+        digest_verify_request(
+            "k",
+            b"digest",
+            b"sig",
+            _metadata(),
+            hash_algorithm=HashAlgorithm.SHA384,  # type: ignore[call-arg]
+        )
 
 
 # ── validation still holds ────────────────────────────────────────────────────
