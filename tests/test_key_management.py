@@ -5,6 +5,8 @@ import pytest
 import pytest_asyncio
 from citius_api.messages.key_management_pb2 import (
     CreateKeyResponse,
+    MigrateKeyResponse,
+    MigrationStrategy,
     ReadKeyResponse,
     TransformKeyResponse,
 )
@@ -18,6 +20,7 @@ from citius_sdk.errors import AuthenticationError, InvalidArgumentError, Permiss
 from citius_sdk.services.key_management import (
     KeyManagementClient,
     create_key_request,
+    migrate_key_request,
     read_key_request,
     transform_key_request,
 )
@@ -53,6 +56,21 @@ class FakeKeyManagementService(KeyManagementServiceServicer):
         response.key_metadata.name = request.name
         response.key_metadata.version = 2
         response.key_metadata.template_id = request.template_id
+        return response
+
+    async def MigrateKey(self, request, context):  # noqa: N802
+        await self._guard(context)
+        response = MigrateKeyResponse(success=True, message="migrated")
+        response.key_metadata.name = request.name
+        response.key_metadata.version = 2
+        target = request.target_instance_id or request.provider_target.provider_id
+        response.key_metadata.provider = target
+        response.result.strategy_used = request.strategy
+        response.result.key_bytes_preserved = (
+            request.strategy == MigrationStrategy.MIGRATION_STRATEGY_PROVIDER_SWITCH
+        )
+        response.result.source_instance_id = "software"
+        response.result.target_instance_id = response.key_metadata.provider
         return response
 
 
@@ -115,3 +133,55 @@ def test_create_key_request_requires_name() -> None:
     with pytest.raises(InvalidArgumentError) as raised:
         create_key_request("", template_id="tmpl-1")
     assert "name is empty" in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_migrate_key(key_endpoint) -> None:
+    async with KeyManagementClient.connect(
+        _config(key_endpoint), token_provider=StaticTokenProvider("t")
+    ) as client:
+        migrated = await client.migrate_key(
+            migrate_key_request(
+                "demo-key",
+                strategy=MigrationStrategy.MIGRATION_STRATEGY_PROVIDER_SWITCH,
+                target_instance_id="openssl",
+            )
+        )
+    assert migrated.success is True
+    assert migrated.key_bytes_preserved is True
+    assert migrated.source_instance_id == "software"
+    assert migrated.target_instance_id == "openssl"
+    assert migrated.key_metadata is not None
+    assert migrated.key_metadata.version == 2
+
+
+def test_migrate_key_request_targets() -> None:
+    by_type = migrate_key_request(
+        "k",
+        strategy=MigrationStrategy.MIGRATION_STRATEGY_REKEY_AND_ARCHIVE,
+        target_provider_id="openssl",
+    )
+    assert by_type.WhichOneof("target") == "provider_target"
+    assert by_type.provider_target.provider_id == "openssl"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"target_instance_id": "openssl"}, "strategy is unspecified"),
+        ({"strategy": MigrationStrategy.MIGRATION_STRATEGY_PROVIDER_SWITCH}, "exactly one of"),
+        (
+            {
+                "strategy": MigrationStrategy.MIGRATION_STRATEGY_PROVIDER_SWITCH,
+                "target_instance_id": "openssl",
+                "target_provider_id": "openssl",
+            },
+            "exactly one of",
+        ),
+    ],
+)
+def test_migrate_key_request_validation(kwargs, message) -> None:
+    kwargs.setdefault("strategy", MigrationStrategy.MIGRATION_STRATEGY_UNSPECIFIED)
+    with pytest.raises(InvalidArgumentError) as raised:
+        migrate_key_request("k", **kwargs)
+    assert message in str(raised.value)

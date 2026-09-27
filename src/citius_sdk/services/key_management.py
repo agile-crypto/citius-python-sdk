@@ -7,6 +7,10 @@ from citius_api.messages.key_management_pb2 import (
     CreateKeyRequest,
     CreateKeyResponse,
     KeyMetadata,
+    MigrateKeyRequest,
+    MigrateKeyResponse,
+    MigrationStrategy,
+    ProviderTarget,
     ReadKeyRequest,
     ReadKeyResponse,
     TransformKeyRequest,
@@ -126,6 +130,39 @@ def transform_key_request(
     )
 
 
+def migrate_key_request(
+    name: str,
+    *,
+    strategy: MigrationStrategy.ValueType,
+    target_instance_id: str = "",
+    target_provider_id: str = "",
+) -> MigrateKeyRequest:
+    """Build a MigrateKeyRequest to move a key to another provider.
+
+    Name exactly one target: a provider instance (``target_instance_id``) or a
+    provider type (``target_provider_id``). The key keeps its template and scope.
+    """
+    errors: list[str] = []
+    _require(errors, bool(name), "name is empty")
+    _require(
+        errors,
+        bool(target_instance_id) != bool(target_provider_id),
+        "exactly one of target_instance_id or target_provider_id is required",
+    )
+    _require(
+        errors,
+        strategy != MigrationStrategy.MIGRATION_STRATEGY_UNSPECIFIED,
+        "strategy is unspecified",
+    )
+    _raise_if_invalid("migrate key request", errors)
+    request = MigrateKeyRequest(name=name, strategy=strategy)
+    if target_instance_id:
+        request.target_instance_id = target_instance_id
+    else:
+        request.provider_target.CopyFrom(ProviderTarget(provider_id=target_provider_id))
+    return request
+
+
 class KeyMetadataView:
     """Read-only view over key metadata preserving the underlying message."""
 
@@ -233,6 +270,46 @@ class TransformKeyResult:
         )
 
 
+class MigrateKeyResult:
+    """Outcome of a key migration."""
+
+    def __init__(self, inner: MigrateKeyResponse) -> None:
+        self._inner = inner
+
+    @property
+    def proto(self) -> MigrateKeyResponse:
+        """The full underlying response message."""
+        return self._inner
+
+    @property
+    def success(self) -> bool:
+        return self._inner.success
+
+    @property
+    def message(self) -> str:
+        return self._inner.message
+
+    @property
+    def key_metadata(self) -> KeyMetadataView | None:
+        return (
+            KeyMetadataView(self._inner.key_metadata)
+            if self._inner.HasField("key_metadata")
+            else None
+        )
+
+    @property
+    def key_bytes_preserved(self) -> bool:
+        return self._inner.result.key_bytes_preserved
+
+    @property
+    def source_instance_id(self) -> str:
+        return self._inner.result.source_instance_id
+
+    @property
+    def target_instance_id(self) -> str:
+        return self._inner.result.target_instance_id
+
+
 class KeyManagementClient:
     """Async client for key lifecycle management."""
 
@@ -288,6 +365,13 @@ class KeyManagementClient:
     ) -> TransformKeyResult:
         response = await self._stub.TransformKey(request, timeout=self._deadline(timeout))
         return TransformKeyResult(response)
+
+    @map_rpc_errors
+    async def migrate_key(
+        self, request: MigrateKeyRequest, *, timeout: float | None = None
+    ) -> MigrateKeyResult:
+        response = await self._stub.MigrateKey(request, timeout=self._deadline(timeout))
+        return MigrateKeyResult(response)
 
     async def close(self, grace: float | None = None) -> None:
         """Close the channel when this client created it."""
