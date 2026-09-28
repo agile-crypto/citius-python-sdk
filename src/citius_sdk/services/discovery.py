@@ -4,18 +4,27 @@ from __future__ import annotations
 
 import grpc
 from citius_api.services.discovery_service_pb2 import (
+    GetTemplateRequest,
+    ListScopesRequest,
+    ListScopesResponse,
     ListTemplatesRequest,
     ListTemplatesResponse,
 )
 from citius_api.services.discovery_service_pb2_grpc import AlgorithmDiscoveryServiceStub
+from citius_api.types.templates_pb2 import TemplateInfo
 
 from citius_sdk.auth import TokenProvider
 from citius_sdk.channel import create_channel
 from citius_sdk.config import ClientConfig
+from citius_sdk.errors import InvalidArgumentError, map_rpc_errors
 
 
 class DiscoveryClient:
-    """Async client for read-only algorithm and template discovery."""
+    """Async client for read-only algorithm and template discovery.
+
+    Responses are the generated messages, unwrapped: the catalogue is data to
+    display or filter, not state to act on.
+    """
 
     def __init__(
         self,
@@ -43,17 +52,38 @@ class DiscoveryClient:
             close_channel=True,
         )
 
+    def _deadline(self, timeout: float | None) -> float:
+        deadline = self._timeout if timeout is None else timeout
+        if deadline <= 0:
+            raise ValueError("timeout must be greater than zero")
+        return deadline
+
+    @map_rpc_errors
     async def list_templates(
         self,
         request: ListTemplatesRequest | None = None,
         *,
         timeout: float | None = None,
     ) -> ListTemplatesResponse:
-        """List templates using the generated request and response contract."""
-        deadline = self._timeout if timeout is None else timeout
-        if deadline <= 0:
-            raise ValueError("timeout must be greater than zero")
-        return await self._stub.ListTemplates(request or ListTemplatesRequest(), timeout=deadline)
+        """List templates, ordered by ID, narrowed by the request's filters."""
+        return await self._stub.ListTemplates(
+            request or ListTemplatesRequest(), timeout=self._deadline(timeout)
+        )
+
+    @map_rpc_errors
+    async def get_template(self, template_id: str, *, timeout: float | None = None) -> TemplateInfo:
+        """Return one template's catalogue entry."""
+        if not template_id:
+            raise InvalidArgumentError(grpc.StatusCode.INVALID_ARGUMENT, "template_id is empty")
+        response = await self._stub.GetTemplate(
+            GetTemplateRequest(template_id=template_id), timeout=self._deadline(timeout)
+        )
+        return response.template
+
+    @map_rpc_errors
+    async def list_scopes(self, *, timeout: float | None = None) -> ListScopesResponse:
+        """List the scopes the catalogue's templates offer, in enum order."""
+        return await self._stub.ListScopes(ListScopesRequest(), timeout=self._deadline(timeout))
 
     async def close(self, grace: float | None = None) -> None:
         """Close the channel when this client created it."""
