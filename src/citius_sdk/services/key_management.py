@@ -210,8 +210,9 @@ def validate_migration_request(
     """Build a ValidateKeyOperationRequest asking how a key could migrate.
 
     Name exactly one target, as for :func:`migrate_key_request`. The server
-    assesses every strategy without side effects; ``preferred_strategy``, when
-    set, is the one the caller intends to use.
+    assesses without side effects. With ``preferred_strategy`` unset it
+    assesses every strategy and recommends one; set, it assesses only that
+    strategy, so the result has one option.
     """
     errors: list[str] = []
     _require(errors, bool(name), "name is empty")
@@ -404,7 +405,14 @@ class MigrateKeyResult:
         )
 
     @property
-    def key_bytes_preserved(self) -> bool:
+    def key_bytes_preserved(self) -> bool | None:
+        """Whether the new version holds the same key bytes as the old one.
+
+        None when the response carries no migration result, so a caller
+        cannot mistake a missing answer for "the bytes changed".
+        """
+        if not self._inner.HasField("result"):
+            return None
         return self._inner.result.key_bytes_preserved
 
     @property
@@ -437,9 +445,10 @@ class MigrateKeyResult:
     def archived_key_name(self) -> str | None:
         """For REKEY_AND_ARCHIVE, the name that addresses the archived version.
 
-        The archived version is the key's previous version, left on
-        :attr:`archived_provider_id` for Verify and Decrypt calls that name it.
-        None for strategies that archive nothing.
+        It is the key's own name: the archived version is the key's previous
+        version, kept on :attr:`archived_provider_id` and addressed by
+        naming that version in Verify and Decrypt calls. None for strategies
+        that archive nothing.
         """
         if not self._inner.HasField("archived_key_info"):
             return None
@@ -447,6 +456,7 @@ class MigrateKeyResult:
 
     @property
     def archived_provider_id(self) -> str | None:
+        """The provider instance (not type) holding the archived version."""
         if not self._inner.HasField("archived_key_info"):
             return None
         return self._inner.archived_key_info.provider_id
@@ -468,7 +478,12 @@ class StrategyOptionView:
 
     @property
     def strategy_name(self) -> str:
-        return MigrationStrategy.Name(self._inner.strategy)
+        """The strategy's enum name, or its number for a strategy this SDK
+        does not know (a newer server), so reading a result never raises."""
+        try:
+            return MigrationStrategy.Name(self._inner.strategy)
+        except ValueError:
+            return f"MIGRATION_STRATEGY_{int(self._inner.strategy)}"
 
     @property
     def feasible(self) -> bool:
@@ -520,7 +535,11 @@ class ValidateKeyOperationResult:
         return self._inner.current_state.template_id
 
     @property
-    def current_extractable(self) -> bool:
+    def current_extractable(self) -> bool | None:
+        """Whether the current version's material may leave its provider;
+        None when the response carries no current state."""
+        if not self._inner.HasField("current_state"):
+            return None
         return self._inner.current_state.extractable
 
 

@@ -24,6 +24,8 @@ from citius_sdk.errors import AuthenticationError, InvalidArgumentError, Permiss
 from citius_sdk.services.key_management import (
     KeyManagementClient,
     KeyMetadataView,
+    MigrateKeyResult,
+    ValidateKeyOperationResult,
     create_key_request,
     list_keys_request,
     migrate_key_request,
@@ -339,3 +341,16 @@ def test_validate_migration_request_needs_one_target(kwargs) -> None:
     with pytest.raises(InvalidArgumentError) as raised:
         validate_migration_request("k", **kwargs)
     assert "exactly one of" in str(raised.value)
+
+
+def test_migration_results_report_missing_parts_as_none() -> None:
+    assert MigrateKeyResult(MigrateKeyResponse(success=True)).key_bytes_preserved is None
+    assert ValidateKeyOperationResult(ValidateKeyOperationResponse()).current_extractable is None
+
+
+def test_strategy_name_of_an_unknown_strategy_does_not_raise() -> None:
+    response = ValidateKeyOperationResponse()
+    option = response.options.add()
+    option.strategy = 99  # type: ignore[assignment]
+    (view,) = ValidateKeyOperationResult(response).options
+    assert view.strategy_name == "MIGRATION_STRATEGY_99"
