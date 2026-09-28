@@ -6,6 +6,7 @@ import pytest_asyncio
 from citius_api.messages.key_management_pb2 import (
     CreateKeyResponse,
     KeyMetadata,
+    ListKeysResponse,
     MigrateKeyResponse,
     MigrationStrategy,
     ReadKeyResponse,
@@ -23,6 +24,7 @@ from citius_sdk.services.key_management import (
     KeyManagementClient,
     KeyMetadataView,
     create_key_request,
+    list_keys_request,
     migrate_key_request,
     read_key_request,
     transform_key_request,
@@ -51,6 +53,20 @@ class FakeKeyManagementService(KeyManagementServiceServicer):
         response = ReadKeyResponse()
         response.key_metadata.name = request.name
         response.key_metadata.version = request.version or 1
+        return response
+
+    async def ListKeys(self, request, context):  # noqa: N802
+        await self._guard(context)
+        names = [n for n in ("alpha", "bravo", "charlie") if n != _DENIED]
+        if request.provider_id:
+            names = [n for n in names if n == "bravo"]
+        start = int(request.page_token or 0)
+        end = start + request.page_size if request.page_size else len(names)
+        response = ListKeysResponse()
+        for name in names[start:end]:
+            response.keys.add(name=name, provider=request.provider_id or "software")
+        if end < len(names):
+            response.next_page_token = str(end)
         return response
 
     async def TransformKey(self, request, context):  # noqa: N802
@@ -136,6 +152,33 @@ def test_create_key_request_requires_name() -> None:
     with pytest.raises(InvalidArgumentError) as raised:
         create_key_request("", template_id="tmpl-1")
     assert "name is empty" in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_list_keys_pages_and_filters(key_endpoint) -> None:
+    async with KeyManagementClient.connect(
+        _config(key_endpoint), token_provider=StaticTokenProvider("t")
+    ) as client:
+        everything = await client.list_keys()
+        assert [k.name for k in everything.keys] == ["alpha", "bravo", "charlie"]
+        assert everything.next_page_token == ""
+
+        first = await client.list_keys(list_keys_request(page_size=2))
+        assert [k.name for k in first.keys] == ["alpha", "bravo"]
+        rest = await client.list_keys(
+            list_keys_request(page_size=2, page_token=first.next_page_token)
+        )
+        assert [k.name for k in rest.keys] == ["charlie"]
+        assert rest.next_page_token == ""
+
+        on_openssl = await client.list_keys(list_keys_request(provider_id="openssl"))
+        assert [(k.name, k.provider) for k in on_openssl.keys] == [("bravo", "openssl")]
+
+
+def test_list_keys_request_rejects_negative_page_size() -> None:
+    with pytest.raises(InvalidArgumentError) as raised:
+        list_keys_request(page_size=-1)
+    assert "page_size" in str(raised.value)
 
 
 def test_key_metadata_view_exposes_placement_and_provenance() -> None:

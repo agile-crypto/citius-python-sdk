@@ -7,6 +7,8 @@ from citius_api.messages.key_management_pb2 import (
     CreateKeyRequest,
     CreateKeyResponse,
     KeyMetadata,
+    ListKeysRequest,
+    ListKeysResponse,
     MigrateKeyRequest,
     MigrateKeyResponse,
     MigrationStrategy,
@@ -114,6 +116,33 @@ def read_key_request(name: str, *, version: int | None = None) -> ReadKeyRequest
     if version is not None:
         request.version = version
     return request
+
+
+def list_keys_request(
+    *,
+    provider_id: str = "",
+    policy: str = "",
+    lifecycle_state: KeyLifecycleState.ValueType = (
+        KeyLifecycleState.KEY_LIFECYCLE_STATE_UNSPECIFIED
+    ),
+    page_size: int = 0,
+    page_token: str = "",
+) -> ListKeysRequest:
+    """Build a ListKeysRequest.
+
+    Each set filter narrows the listing; ``page_size`` 0 returns every match.
+    Pass a response's ``next_page_token`` as ``page_token`` for the next page.
+    """
+    errors: list[str] = []
+    _require(errors, page_size >= 0, "page_size must not be negative")
+    _raise_if_invalid("list keys request", errors)
+    return ListKeysRequest(
+        provider_id=provider_id,
+        policy=policy,
+        lifecycle_state=lifecycle_state,
+        page_size=page_size,
+        page_token=page_token,
+    )
 
 
 def transform_key_request(
@@ -262,6 +291,27 @@ class ReadKeyResult:
         )
 
 
+class ListKeysResult:
+    """One page of a key listing, ordered by name."""
+
+    def __init__(self, inner: ListKeysResponse) -> None:
+        self._inner = inner
+
+    @property
+    def proto(self) -> ListKeysResponse:
+        """The full underlying response message."""
+        return self._inner
+
+    @property
+    def keys(self) -> list[KeyMetadataView]:
+        return [KeyMetadataView(k) for k in self._inner.keys]
+
+    @property
+    def next_page_token(self) -> str:
+        """Token for the next page; empty on the last page."""
+        return self._inner.next_page_token
+
+
 class TransformKeyResult:
     """Outcome of a key transformation."""
 
@@ -378,6 +428,15 @@ class KeyManagementClient:
     ) -> ReadKeyResult:
         response = await self._stub.ReadKey(request, timeout=self._deadline(timeout))
         return ReadKeyResult(response)
+
+    @map_rpc_errors
+    async def list_keys(
+        self, request: ListKeysRequest | None = None, *, timeout: float | None = None
+    ) -> ListKeysResult:
+        response = await self._stub.ListKeys(
+            request or ListKeysRequest(), timeout=self._deadline(timeout)
+        )
+        return ListKeysResult(response)
 
     @map_rpc_errors
     async def transform_key(
