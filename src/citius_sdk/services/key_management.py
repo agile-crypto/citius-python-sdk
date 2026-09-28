@@ -24,6 +24,7 @@ from citius_api.messages.key_management_pb2 import (
 )
 from citius_api.services.key_management_service_pb2_grpc import KeyManagementServiceStub
 from citius_api.types.common_pb2 import KeyLifecycleState, KeyOrigin
+from citius_api.types.implementation_pb2 import ImplementationProperties
 
 from citius_sdk.auth import TokenProvider
 from citius_sdk.channel import create_channel
@@ -413,6 +414,42 @@ class MigrateKeyResult:
     @property
     def target_instance_id(self) -> str:
         return self._inner.result.target_instance_id
+
+    @property
+    def strategy_used(self) -> MigrationStrategy.ValueType:
+        return self._inner.result.strategy_used
+
+    @property
+    def source_provider_id(self) -> str:
+        return self._inner.result.source_provider_id
+
+    @property
+    def target_provider_id(self) -> str:
+        return self._inner.result.target_provider_id
+
+    @property
+    def target_implementation(self) -> ImplementationProperties | None:
+        """What the target instance reports about its implementation, if anything."""
+        result = self._inner.result
+        return result.target_implementation if result.HasField("target_implementation") else None
+
+    @property
+    def archived_key_name(self) -> str | None:
+        """For REKEY_AND_ARCHIVE, the name that addresses the archived version.
+
+        The archived version is the key's previous version, left on
+        :attr:`archived_provider_id` for Verify and Decrypt calls that name it.
+        None for strategies that archive nothing.
+        """
+        if not self._inner.HasField("archived_key_info"):
+            return None
+        return self._inner.archived_key_info.archived_key_name
+
+    @property
+    def archived_provider_id(self) -> str | None:
+        if not self._inner.HasField("archived_key_info"):
+            return None
+        return self._inner.archived_key_info.provider_id
 
 
 class StrategyOptionView:

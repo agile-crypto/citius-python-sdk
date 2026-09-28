@@ -92,6 +92,13 @@ class FakeKeyManagementService(KeyManagementServiceServicer):
         )
         response.result.source_instance_id = "software"
         response.result.target_instance_id = response.key_metadata.provider
+        response.result.source_provider_id = "software"
+        response.result.target_provider_id = "openssl"
+        if target == "openssl-fips":
+            response.result.target_implementation.fips_140.certified = True
+        if request.strategy == MigrationStrategy.MIGRATION_STRATEGY_REKEY_AND_ARCHIVE:
+            response.archived_key_info.archived_key_name = request.name
+            response.archived_key_info.provider_id = "software"
         return response
 
     async def ValidateKeyOperation(self, request, context):  # noqa: N802
@@ -238,6 +245,31 @@ async def test_migrate_key(key_endpoint) -> None:
     assert migrated.target_instance_id == "openssl"
     assert migrated.key_metadata is not None
     assert migrated.key_metadata.version == 2
+    assert migrated.strategy_used == MigrationStrategy.MIGRATION_STRATEGY_PROVIDER_SWITCH
+    assert migrated.source_provider_id == "software"
+    assert migrated.target_provider_id == "openssl"
+    assert migrated.target_implementation is None
+    assert migrated.archived_key_name is None
+    assert migrated.archived_provider_id is None
+
+
+@pytest.mark.asyncio
+async def test_migrate_key_rekey_and_archive_reports_the_archive(key_endpoint) -> None:
+    async with KeyManagementClient.connect(
+        _config(key_endpoint), token_provider=StaticTokenProvider("t")
+    ) as client:
+        migrated = await client.migrate_key(
+            migrate_key_request(
+                "demo-key",
+                strategy=MigrationStrategy.MIGRATION_STRATEGY_REKEY_AND_ARCHIVE,
+                target_instance_id="openssl-fips",
+            )
+        )
+    assert migrated.key_bytes_preserved is False
+    assert migrated.archived_key_name == "demo-key"
+    assert migrated.archived_provider_id == "software"
+    assert migrated.target_implementation is not None
+    assert migrated.target_implementation.fips_140.certified is True
 
 
 def test_migrate_key_request_targets() -> None:
