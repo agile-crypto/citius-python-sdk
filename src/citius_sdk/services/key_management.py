@@ -17,6 +17,7 @@ from citius_api.messages.key_management_pb2 import (
     TransformKeyResponse,
 )
 from citius_api.services.key_management_service_pb2_grpc import KeyManagementServiceStub
+from citius_api.types.common_pb2 import KeyLifecycleState, KeyOrigin
 
 from citius_sdk.auth import TokenProvider
 from citius_sdk.channel import create_channel
@@ -192,6 +193,25 @@ class KeyMetadataView:
     @property
     def policy(self) -> str:
         return self._inner.policy
+
+    @property
+    def provider(self) -> str:
+        """The provider instance holding the current version."""
+        return self._inner.provider
+
+    @property
+    def extractable(self) -> bool:
+        """Whether the current version's material may leave its provider."""
+        return self._inner.extractable
+
+    @property
+    def lifecycle_state(self) -> KeyLifecycleState.ValueType:
+        return self._inner.lifecycle_state
+
+    @property
+    def origin(self) -> KeyOrigin.ValueType:
+        """How the current version's material came to exist."""
+        return self._inner.origin
 
 
 class CreateKeyResult:

@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 from citius_api.messages.key_management_pb2 import (
     CreateKeyResponse,
+    KeyMetadata,
     MigrateKeyResponse,
     MigrationStrategy,
     ReadKeyResponse,
@@ -14,11 +15,13 @@ from citius_api.services.key_management_service_pb2_grpc import (
     KeyManagementServiceServicer,
     add_KeyManagementServiceServicer_to_server,
 )
+from citius_api.types.common_pb2 import KeyLifecycleState, KeyOrigin
 
 from citius_sdk import ClientConfig, StaticTokenProvider, TLSConfig
 from citius_sdk.errors import AuthenticationError, InvalidArgumentError, PermissionDeniedError
 from citius_sdk.services.key_management import (
     KeyManagementClient,
+    KeyMetadataView,
     create_key_request,
     migrate_key_request,
     read_key_request,
@@ -133,6 +136,21 @@ def test_create_key_request_requires_name() -> None:
     with pytest.raises(InvalidArgumentError) as raised:
         create_key_request("", template_id="tmpl-1")
     assert "name is empty" in str(raised.value)
+
+
+def test_key_metadata_view_exposes_placement_and_provenance() -> None:
+    md = KeyMetadata(
+        name="k",
+        provider="openssl",
+        extractable=True,
+        lifecycle_state=KeyLifecycleState.KEY_LIFECYCLE_STATE_ACTIVE,
+        origin=KeyOrigin.KEY_ORIGIN_GENERATED,
+    )
+    view = KeyMetadataView(md)
+    assert view.provider == "openssl"
+    assert view.extractable is True
+    assert view.lifecycle_state == KeyLifecycleState.KEY_LIFECYCLE_STATE_ACTIVE
+    assert view.origin == KeyOrigin.KEY_ORIGIN_GENERATED
 
 
 @pytest.mark.asyncio
