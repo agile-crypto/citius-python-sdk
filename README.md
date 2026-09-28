@@ -30,10 +30,21 @@ to refresh an access token without rebuilding the channel or service client.
 
 | Client | Implemented methods |
 |---|---|
-| `DiscoveryClient` | `list_templates` |
+| `DiscoveryClient` | `list_templates`, `get_template`, `list_scopes` |
+| `ProviderClient` | `list_providers`, `get_provider`, `list_provider_instances`, `get_provider_instance`, `match_providers` |
 | `CryptoClient` | `encrypt`, `decrypt`, `sign`, `verify`, `digest_sign`, `digest_verify` |
-| `KeyManagementClient` | `create_key`, `read_key`, `transform_key` |
+| `KeyManagementClient` | `create_key`, `read_key`, `list_keys`, `transform_key`, `migrate_key`, `validate_key_operation` |
 | `CryptoPolicyClient` | `create_policy`, `read_policy`, `update_policy` |
+
+`DiscoveryClient` and `ProviderClient` take keyword arguments and build the
+request themselves; the other clients take a request built by a module-level
+builder (`create_key_request`, `migrate_key_request`,
+`validate_migration_request`, ...). `validate_migration_request` with no
+`preferred_strategy` asks the server to assess every strategy and recommend
+one; with one set, only that strategy is assessed. Migration results name
+provider *instances* (`source_instance_id`, `target_instance_id`,
+`archived_provider_id`) as well as provider types, and report a part the
+response lacks as `None` rather than a default.
 
 Request builders validate structurally and report every problem before any
 network call. Signature, ciphertext, and key responses preserve the complete
