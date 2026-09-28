@@ -15,8 +15,12 @@ from citius_api.messages.key_management_pb2 import (
     ProviderTarget,
     ReadKeyRequest,
     ReadKeyResponse,
+    StrategyOption,
     TransformKeyRequest,
     TransformKeyResponse,
+    ValidateKeyOperationRequest,
+    ValidateKeyOperationResponse,
+    ValidateMigrateIntent,
 )
 from citius_api.services.key_management_service_pb2_grpc import KeyManagementServiceStub
 from citius_api.types.common_pb2 import KeyLifecycleState, KeyOrigin
@@ -191,6 +195,37 @@ def migrate_key_request(
     else:
         request.provider_target.CopyFrom(ProviderTarget(provider_id=target_provider_id))
     return request
+
+
+def validate_migration_request(
+    name: str,
+    *,
+    target_instance_id: str = "",
+    target_provider_id: str = "",
+    preferred_strategy: MigrationStrategy.ValueType = (
+        MigrationStrategy.MIGRATION_STRATEGY_UNSPECIFIED
+    ),
+) -> ValidateKeyOperationRequest:
+    """Build a ValidateKeyOperationRequest asking how a key could migrate.
+
+    Name exactly one target, as for :func:`migrate_key_request`. The server
+    assesses every strategy without side effects; ``preferred_strategy``, when
+    set, is the one the caller intends to use.
+    """
+    errors: list[str] = []
+    _require(errors, bool(name), "name is empty")
+    _require(
+        errors,
+        bool(target_instance_id) != bool(target_provider_id),
+        "exactly one of target_instance_id or target_provider_id is required",
+    )
+    _raise_if_invalid("validate migration request", errors)
+    intent = ValidateMigrateIntent(preferred_strategy=preferred_strategy)
+    if target_instance_id:
+        intent.target_instance_id = target_instance_id
+    else:
+        intent.target_provider_id = target_provider_id
+    return ValidateKeyOperationRequest(name=name, migrate=intent)
 
 
 class KeyMetadataView:
@@ -380,6 +415,78 @@ class MigrateKeyResult:
         return self._inner.result.target_instance_id
 
 
+class StrategyOptionView:
+    """One assessed strategy: whether it would succeed now, and why not."""
+
+    def __init__(self, inner: StrategyOption) -> None:
+        self._inner = inner
+
+    @property
+    def proto(self) -> StrategyOption:
+        return self._inner
+
+    @property
+    def strategy(self) -> MigrationStrategy.ValueType:
+        return self._inner.strategy
+
+    @property
+    def strategy_name(self) -> str:
+        return MigrationStrategy.Name(self._inner.strategy)
+
+    @property
+    def feasible(self) -> bool:
+        return self._inner.feasible
+
+    @property
+    def infeasibility_reason(self) -> str:
+        return self._inner.infeasibility_reason
+
+    @property
+    def security_notes(self) -> list[str]:
+        return list(self._inner.security_notes)
+
+
+class ValidateKeyOperationResult:
+    """The server's side-effect-free assessment of a key operation."""
+
+    def __init__(self, inner: ValidateKeyOperationResponse) -> None:
+        self._inner = inner
+
+    @property
+    def proto(self) -> ValidateKeyOperationResponse:
+        """The full underlying response message."""
+        return self._inner
+
+    @property
+    def options(self) -> list[StrategyOptionView]:
+        return [StrategyOptionView(o) for o in self._inner.options]
+
+    @property
+    def feasible_strategies(self) -> list[MigrationStrategy.ValueType]:
+        return [o.strategy for o in self._inner.options if o.feasible]
+
+    @property
+    def recommended_strategy(self) -> MigrationStrategy.ValueType:
+        """The recommended strategy; UNSPECIFIED when none is feasible."""
+        return self._inner.recommended_strategy
+
+    @property
+    def recommendation_reason(self) -> str:
+        return self._inner.recommendation_reason
+
+    @property
+    def current_instance_id(self) -> str:
+        return self._inner.current_state.instance_id
+
+    @property
+    def current_template_id(self) -> str:
+        return self._inner.current_state.template_id
+
+    @property
+    def current_extractable(self) -> bool:
+        return self._inner.current_state.extractable
+
+
 class KeyManagementClient:
     """Async client for key lifecycle management."""
 
@@ -451,6 +558,13 @@ class KeyManagementClient:
     ) -> MigrateKeyResult:
         response = await self._stub.MigrateKey(request, timeout=self._deadline(timeout))
         return MigrateKeyResult(response)
+
+    @map_rpc_errors
+    async def validate_key_operation(
+        self, request: ValidateKeyOperationRequest, *, timeout: float | None = None
+    ) -> ValidateKeyOperationResult:
+        response = await self._stub.ValidateKeyOperation(request, timeout=self._deadline(timeout))
+        return ValidateKeyOperationResult(response)
 
     async def close(self, grace: float | None = None) -> None:
         """Close the channel when this client created it."""

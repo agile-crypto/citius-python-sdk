@@ -11,6 +11,7 @@ from citius_api.messages.key_management_pb2 import (
     MigrationStrategy,
     ReadKeyResponse,
     TransformKeyResponse,
+    ValidateKeyOperationResponse,
 )
 from citius_api.services.key_management_service_pb2_grpc import (
     KeyManagementServiceServicer,
@@ -28,6 +29,7 @@ from citius_sdk.services.key_management import (
     migrate_key_request,
     read_key_request,
     transform_key_request,
+    validate_migration_request,
 )
 
 _DENIED = "demo-restricted-key"
@@ -90,6 +92,28 @@ class FakeKeyManagementService(KeyManagementServiceServicer):
         )
         response.result.source_instance_id = "software"
         response.result.target_instance_id = response.key_metadata.provider
+        return response
+
+    async def ValidateKeyOperation(self, request, context):  # noqa: N802
+        await self._guard(context)
+        if request.WhichOneof("intent") != "migrate":
+            await context.abort(grpc.StatusCode.UNIMPLEMENTED, "only migrate")
+        response = ValidateKeyOperationResponse(
+            recommended_strategy=MigrationStrategy.MIGRATION_STRATEGY_PROVIDER_SWITCH,
+            recommendation_reason="keeps the key bytes",
+        )
+        response.current_state.instance_id = "software"
+        response.current_state.extractable = True
+        response.options.add(
+            strategy=MigrationStrategy.MIGRATION_STRATEGY_PROVIDER_SWITCH,
+            feasible=True,
+            security_notes=["material leaves software in plaintext"],
+        )
+        response.options.add(
+            strategy=MigrationStrategy.MIGRATION_STRATEGY_WRAPPED_TRANSFER,
+            feasible=False,
+            infeasibility_reason="no provider wraps",
+        )
         return response
 
 
@@ -246,3 +270,40 @@ def test_migrate_key_request_validation(kwargs, message) -> None:
     with pytest.raises(InvalidArgumentError) as raised:
         migrate_key_request("k", **kwargs)
     assert message in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_validate_migration(key_endpoint) -> None:
+    async with KeyManagementClient.connect(
+        _config(key_endpoint), token_provider=StaticTokenProvider("t")
+    ) as client:
+        assessed = await client.validate_key_operation(
+            validate_migration_request("demo-key", target_instance_id="openssl")
+        )
+    assert assessed.recommended_strategy == MigrationStrategy.MIGRATION_STRATEGY_PROVIDER_SWITCH
+    assert assessed.recommendation_reason == "keeps the key bytes"
+    assert assessed.current_instance_id == "software"
+    assert assessed.current_extractable is True
+    assert assessed.feasible_strategies == [MigrationStrategy.MIGRATION_STRATEGY_PROVIDER_SWITCH]
+    switch, wrapped = assessed.options
+    assert switch.strategy_name == "MIGRATION_STRATEGY_PROVIDER_SWITCH"
+    assert switch.security_notes == ["material leaves software in plaintext"]
+    assert wrapped.feasible is False
+    assert wrapped.infeasibility_reason == "no provider wraps"
+
+
+def test_validate_migration_request_targets() -> None:
+    by_type = validate_migration_request("k", target_provider_id="openssl")
+    assert by_type.WhichOneof("intent") == "migrate"
+    assert by_type.migrate.WhichOneof("target") == "target_provider_id"
+    assert by_type.migrate.target_provider_id == "openssl"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{}, {"target_instance_id": "a", "target_provider_id": "b"}],
+)
+def test_validate_migration_request_needs_one_target(kwargs) -> None:
+    with pytest.raises(InvalidArgumentError) as raised:
+        validate_migration_request("k", **kwargs)
+    assert "exactly one of" in str(raised.value)
